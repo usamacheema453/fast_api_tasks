@@ -3,7 +3,7 @@ from app.models.user import User
 from app.schemas.user import UserCreate, UserResponse
 
 def create_user(db: Session, user: UserCreate):
-    db_user = User(name= user.name, email=user.email)
+    db_user = User(name= user.name, email=user.email, phone=user.phone, address=user.address)
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
@@ -17,6 +17,8 @@ def update_user(db: Session, user_id: int, user: UserCreate):
     if db_user:
         db_user.name = user.name
         db_user.email = user.email
+        db_user.phone = user.phone
+        db_user.address = user.address
         db.commit()
         db.refresh(db_user)
         return db_user

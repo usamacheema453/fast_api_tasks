@@ -8,5 +8,10 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     name= Column(String, index=True)
     email= Column(String, index=True, unique=True)
+    phone= Column(String, nullable=True)
+    address= Column(String, nullable=True)
 
-    
+    tasks = relationship(
+        "Task",
+        back_populates="user",
+    )

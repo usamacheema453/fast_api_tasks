@@ -3,11 +3,14 @@ from sqlalchemy.orm import Session
 from app.crud.user import create_user, delete_user, update_user, get_users
 from app.models.user import User
 from app.schemas.user import UserCreate, UserResponse
-from app.database.database import SessionLocal
+from app.database.database import SessionLocal, Base, engine
 from typing import List
+from app.crud.task import create_task, get_tasks_for_user
+from app.schemas.Task import TaskCreate, TaskResponse
+from app.models.task import Task
 
 app= FastAPI()
-
+Base.metadata.create_all(bind=engine)
 def get_db():
     db = SessionLocal()
     try:
@@ -36,3 +39,18 @@ def remove_user(user_id: int, db: Session = Depends(get_db)):
     if db_users:
         return {"message" : "Deleted successfully"}
     raise HTTPException(status_code=404, detail="User not found")
+
+## Task User
+
+@app.post("/post", response_model=TaskResponse)
+def add_task(
+    user_id: int,
+    task: TaskCreate,
+    db: Session = Depends(get_db)
+):
+    return create_task(db=db, user_id=user_id, task=task)
+
+
+@app.get("/", response_model=List[TaskResponse])
+def fetch_task(user_id: int, db: Session = Depends(get_db)):
+    return get_tasks_for_user(db=db, user_id=user_id)
