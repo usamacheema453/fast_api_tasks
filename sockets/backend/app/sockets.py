@@ -6,6 +6,7 @@ from .auth import decode_token
 from .models import RoomMember, Message
 
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
+
 connected_users: dict[str, int] ={}
 
 
@@ -34,7 +35,7 @@ async def join_room(sid, data):
     user_id = connected_users.get(sid)
     room_id = int(data.get("room_id"))
 
-    async with AsyncSessionLocal as db:
+    async with AsyncSessionLocal() as db:
         q = await db.execute(select(RoomMember).where(RoomMember.room_id == room_id, RoomMember.user_id == user_id))
         if not q.scalar_one_or_none():
             await sio.emit("error", {"message": "Not a room member"}, to=sid)
@@ -45,7 +46,7 @@ async def join_room(sid, data):
 
 @sio.event
 async def typing(sid, data):
-    user_id = connected_users(sid)
+    user_id = connected_users.get(sid)
     room_id = int(data.get("room_id"))
 
     is_typing = bool(data.get("is_typing", False))

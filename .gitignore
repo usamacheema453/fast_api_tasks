@@ -11,6 +11,10 @@ venv/
 .venv/
 env/
 
+**/sockets/client/node_modules
+sockets/client/node_modules/
+
+
 # =========================
 # FastAPI / Uvicorn
 # =========================

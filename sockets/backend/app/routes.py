@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from .database import get_db
 from .models import User, Room, RoomMember, Message
-from .auth import has_password, verify_password, create_token, decode_token
+from .auth import hash_password, verify_password, create_token, decode_token
 
 
 router = APIRouter()
@@ -28,14 +28,14 @@ async def register(payload: dict, db: AsyncSession= Depends(get_db)):
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already exists")
     
-    user = User(email= email, full_name= full_name or "User", password_has = has_password(password))
+    user = User(email= email, full_name= full_name or "User", password_has = hash_password(password))
     db.add(user)
     await db.commit()
     await db.refresh(user)
 
     token= create_token(user.id)
     return {
-         "user": {"id": user.id, "email": user.email, "full_name": user.full_name}
+         "user": {"token": token, "id": user.id, "email": user.email, "full_name": user.full_name}
     }
 
 @router.post("/auth/login")
@@ -60,7 +60,7 @@ async def create_room(payload: dict, authorization: str | None=None, db: AsyncSe
     if not title:
         raise HTTPException(status_code=400, detail="title required")
     
-    room = Room(title)
+    room = Room(title = title)
     db.add(room)
     await db.commit()
     await db.refresh(room)

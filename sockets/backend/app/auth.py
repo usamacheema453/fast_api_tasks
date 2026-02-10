@@ -7,7 +7,7 @@ from .config import JWT_ALG, JWT_SECRET
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-def has_password(password: str) -> str:
+def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
 
