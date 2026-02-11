@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .database import engine, Base
 from .routes import router
-from .sockets import sio
+from app.sockets import sio
 import socketio
 
 app = FastAPI()
@@ -22,4 +22,4 @@ async def on_startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-socket_app = socketio.ASGIApp(sio, app)
+socket_app = socketio.ASGIApp(sio, other_asgi_app=app)

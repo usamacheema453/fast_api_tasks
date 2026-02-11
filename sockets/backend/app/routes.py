@@ -1,6 +1,6 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from .database import get_db
 from .models import User, Room, RoomMember, Message
 from .auth import hash_password, verify_password, create_token, decode_token
@@ -15,6 +15,14 @@ def get_bearer_user_id(authorization: str | None) -> int:
     token = authorization.replace("Bearer ", "").strip()
     return decode_token(token)
 
+@router.get("/users")
+async def users(authorization: str | None = Header(None), db: AsyncSession = Depends(get_db)):
+    user_id = get_bearer_user_id(authorization)
+    q = await db.execute(select(User.id, User.email, User.full_name).where(User.id != user_id))
+    return {
+        "users":[ {"id": r[0], "email": r[1], "full_name": r[2]} for r in q.all()]
+    }
+
 @router.post("/auth/register")
 async def register(payload: dict, db: AsyncSession= Depends(get_db)):
     email = (payload.get("email") or "").strip().lower()
@@ -28,7 +36,7 @@ async def register(payload: dict, db: AsyncSession= Depends(get_db)):
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already exists")
     
-    user = User(email= email, full_name= full_name or "User", password_has = hash_password(password))
+    user = User(email= email, full_name= full_name or "User", password_hash = hash_password(password))
     db.add(user)
     await db.commit()
     await db.refresh(user)
@@ -52,64 +60,52 @@ async def login(payload: dict, db: AsyncSession = Depends(get_db)):
     token = create_token(user.id)
     return {"token": token, "user": {"id": user.id, "email": user.email, "full_name": user.full_name}}
 
-@router.post("/room/create")
-async def create_room(payload: dict, authorization: str | None=None, db: AsyncSession = Depends(get_db)):
-    user_id = get_bearer_user_id(authorization)
-    title = (payload.get("title") or "").strip()
 
-    if not title:
-        raise HTTPException(status_code=400, detail="title required")
+@router.post("/chat/start")
+async def start_chat(payload: dict, authorization: str | None = Header(None), db : AsyncSession = Depends(get_db)):
+    user_id = get_bearer_user_id(authorization)
+    others = payload["user_id"]
+
+    q = await db.execute(
+        select(Room.id)
+        .join(RoomMember, RoomMember.room_id == Room.id)
+        .where(RoomMember.user_id.in_([user_id, others]))
+        .group_by(Room.id)
+        .having(func.count(RoomMember.user_id) == 2)
+    )
+
+    room = q.scalar_one_or_none()
+
+    if room:
+        return {"room_id": room}
     
-    room = Room(title = title)
+    room = Room()
     db.add(room)
     await db.commit()
     await db.refresh(room)
 
-    db.add(RoomMember(room_id= room.id, user_id=user_id))
+    db.add_all([
+        RoomMember(room_id = room.id, user_id= user_id),
+        RoomMember(room_id=room.id, user_id=others)
+    ])
     await db.commit()
 
-    return{
-        "room": {"id": room.id, "title": room.title}
-    }
+    return {"room_id": room.id}
 
-@router.get("/rooms")
-async def list_rooms(authorization: str | None = None, db: AsyncSession = Depends(get_db)):
+
+@router.get("/messages/{room_id}")
+async def messages(room_id: int, authorization: str | None= Header(None), db: AsyncSession= Depends(get_db)):
     user_id = get_bearer_user_id(authorization)
 
-    q = await db.execute(
-        select(Room.id, Room.title)
-        .join(RoomMember, RoomMember.room_id == Room.id)
-        .where(RoomMember.user_id==user_id)
-        .order_by(Room.id.desc())
-    )
-
-    rooms = [{"id": r[0], "title": r[1]} for r in q.all()]
-    return {
-        "rooms": rooms
-    }
-
-@router.get("/room/{room_id}/messages")
-async def get_messages(room_id: int, authorization: str | None= None, db: AsyncSession = Depends(get_db)):
-    user_id = get_bearer_user_id(authorization)
-
-    m = await db.execute(
-        select(RoomMember).where(RoomMember.room_id == room_id, RoomMember.user_id == user_id)
-    )
-
-    if not m.scalar_one_or_none():
-        raise HTTPException(status_code=403, detail="Not a member of this room")
-    
     q = await db.execute(
         select(Message.id, Message.user_id, Message.content, Message.created_at)
         .where(Message.room_id == room_id)
-        .order_by(Message.id.asc())
-        .limit(200)
+        .order_by(Message.id)
     )
 
-    messages = [
-        {"id": row[0], "user_id": row[1], "content": row[2], "created_at": str(row[3])}
-        for row in q.all()
-    ]
     return {
-        "messages": messages
+        "messages": [
+            {"id": r[0], "user_id": r[1], "content": r[2], "created_at": str(r[3])}
+            for r in q.all()
+        ]
     }
